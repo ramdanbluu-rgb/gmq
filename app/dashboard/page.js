@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -18,6 +19,10 @@ export default function DashboardPage() {
   const [ambiguousModal, setAmbiguousModal] = useState(null);
   const [resolvingAmbiguous, setResolvingAmbiguous] = useState(false);
 
+  // State untuk Fitur Preview Data Harian tersimpan
+  const [previewData, setPreviewData] = useState([]);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+
   // Get user email from session
   useEffect(() => {
     const getUserEmail = async () => {
@@ -33,6 +38,32 @@ export default function DashboardPage() {
     };
     getUserEmail();
   }, []);
+
+  // Fungsi untuk memuat preview data yang sudah tersimpan di database pada tanggal terpilih
+  const muatPreviewHarian = async (tanggalDipilih) => {
+    if (!tanggalDipilih) return;
+    setLoadingPreview(true);
+    try {
+      const res = await fetch(`/api/preview-rekap?tanggal=${tanggalDipilih}`);
+      const hasil = await res.json();
+      if (hasil.success) {
+        setPreviewData(hasil.data);
+      }
+    } catch (err) {
+      console.error("Gagal memuat preview harian:", err);
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
+  // Efek untuk memuat ulang data harian ketika tanggal berubah
+  useEffect(() => {
+    if (tanggal) {
+      muatPreviewHarian(tanggal);
+    } else {
+      setPreviewData([]);
+    }
+  }, [tanggal]);
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -67,7 +98,6 @@ export default function DashboardPage() {
         throw new Error(errorData.error || "Gagal menyimpan data");
       }
 
-      // Success - remove from ambiguous and update results
       const updatedAmbiguous = parseResults.data.ambiguous.filter(
         (r) => r.namaInput !== record.namaInput
       );
@@ -89,6 +119,9 @@ export default function DashboardPage() {
       setStatusMessage(
         `✅ Berhasil menyimpan data untuk ${siswaNama}. Teruskan dengan yang lain.`
       );
+      
+      // Refresh daftar preview harian setelah resolving selesai
+      muatPreviewHarian(tanggal);
     } catch (err) {
       setError(`Gagal menyimpan: ${err.message}`);
     } finally {
@@ -133,7 +166,6 @@ export default function DashboardPage() {
       const data = await response.json();
       setParseResults(data);
 
-      // Status message
       const msgs = [];
       msgs.push(`✅ ${data.summary.success} data berhasil disimpan`);
       if (data.summary.ambiguous > 0) {
@@ -145,7 +177,9 @@ export default function DashboardPage() {
 
       setStatusMessage(msgs.join(" | "));
 
-      // Jika ada ambiguous, buka modal otomatis untuk yang pertama
+      // Refresh tabel preview di bawah setelah proses parsing berhasil
+      muatPreviewHarian(tanggal);
+
       if (data.data.ambiguous && data.data.ambiguous.length > 0) {
         setAmbiguousModal(data.data.ambiguous[0]);
       }
@@ -226,6 +260,16 @@ export default function DashboardPage() {
               />
             </div>
 
+            {/* 🌟 LINK MENU MENUJU HALAMAN REKAP BULANAN */}
+            <div className="pt-1">
+              <Link 
+                href="/rekap-bulanan"
+                className="w-full inline-flex items-center justify-center rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-blue-700 active:scale-[0.99]"
+              >
+                Lihat Jurnal Laporan Bulanan
+              </Link>
+            </div>
+
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">
                 Mode rekap
@@ -233,8 +277,8 @@ export default function DashboardPage() {
               <div className="rounded-2xl border border-slate-300 bg-white p-4 text-sm text-slate-600">
                 <p className="font-semibold text-slate-900">Proses & Rekap</p>
                 <p className="mt-2 leading-6">
-                  Sistem akan memfilter baris berawalan angka, mendeteksi kelas X / XI,
-                  lalu mengirim data untuk diproses lebih lanjut pada server.
+                  Sistem akan memfilter baris berawalan angka, mencocokkan kata nama, 
+                  luno menyimpan data untuk diproses pada server database.
                 </p>
               </div>
             </div>
@@ -243,8 +287,9 @@ export default function DashboardPage() {
               <p className="text-sm font-semibold text-slate-700">Panduan singkat</p>
               <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
                 <li>1. Tempelkan daftar WhatsApp GMQ di textarea.</li>
-                <li>2. Pilih tanggal rekap.</li>
+                <li>2. Pilih tanggal rekap harian.</li>
                 <li>3. Klik tombol Proses & Rekap.</li>
+                <li>4. Klik menu Jurnal Bulanan untuk melihat total sanksi siswa.</li>
               </ul>
             </div>
           </div>
@@ -257,13 +302,12 @@ export default function DashboardPage() {
               <textarea
                 value={rawText}
                 onChange={(event) => setRawText(event.target.value)}
-                rows={16}
+                rows={12}
                 placeholder={`Contoh:
-1. Aulia Fitri X MPLB 1
-2. Budi Santoso XI RPL 1
-3. Cahaya Putri X AKL 2
+1. Muhammad Fazri Apriyanto X MPLB 1 Q.S Ali-Imran
+2. putri x mplb 1 q.s an-naba
 ...`}
-                className="min-h-[320px] w-full rounded-3xl border border-slate-300 bg-white px-4 py-4 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                className="min-h-[260px] w-full rounded-3xl border border-slate-300 bg-white px-4 py-4 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
               />
             </div>
 
@@ -293,7 +337,6 @@ export default function DashboardPage() {
 
             {parseResults && (
               <div className="space-y-4">
-                {/* Summary Statistics */}
                 <div className="grid grid-cols-2 gap-3 rounded-3xl bg-gradient-to-r from-blue-50 to-blue-100 p-4 sm:grid-cols-4">
                   <div>
                     <p className="text-xs text-blue-700">Berhasil</p>
@@ -321,13 +364,12 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Success Results */}
                 {parseResults.data.success && parseResults.data.success.length > 0 && (
                   <div className="rounded-3xl border border-green-300 bg-green-50 p-6">
                     <p className="mb-3 text-sm font-semibold text-green-900">
                       ✅ Data Berhasil Disimpan ({parseResults.data.success.length})
                     </p>
-                    <div className="space-y-2">
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
                       {parseResults.data.success.map((item, idx) => (
                         <div key={idx} className="rounded-lg bg-green-100 p-2 text-xs text-green-900">
                           {item.namaInput} → {item.namaSiswa}
@@ -337,43 +379,62 @@ export default function DashboardPage() {
                   </div>
                 )}
 
-                {/* Ambiguous Pending */}
-                {parseResults.data.ambiguous && parseResults.data.ambiguous.length > 0 && (
-                  <div className="rounded-3xl border border-orange-300 bg-orange-50 p-6">
-                    <p className="mb-3 text-sm font-semibold text-orange-900">
-                      ⚠️ Perlu Konfirmasi Manual ({parseResults.data.ambiguous.length})
-                    </p>
-                    <div className="space-y-2">
-                      {parseResults.data.ambiguous.map((item, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => setAmbiguousModal(item)}
-                          className="w-full rounded-lg bg-orange-100 p-3 text-left text-xs text-orange-900 transition hover:bg-orange-200"
-                        >
-                          <p className="font-semibold">{item.namaInput}</p>
-                          <p className="mt-1 text-orange-700">
-                            Klik untuk memilih dari {item.candidates.length} opsi
-                          </p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Not Found */}
                 {parseResults.data.notFound && parseResults.data.notFound.length > 0 && (
                   <div className="rounded-3xl border border-yellow-300 bg-yellow-50 p-6">
                     <p className="mb-3 text-sm font-semibold text-yellow-900">
                       ❌ Tidak Ditemukan di Database ({parseResults.data.notFound.length})
                     </p>
-                    <div className="space-y-2">
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
                       {parseResults.data.notFound.map((item, idx) => (
                         <div key={idx} className="rounded-lg bg-yellow-100 p-2 text-xs text-yellow-900">
-                          {item.namaInput} - {item.kelas} {item.jurusan}
+                          {item.namaInput}
                         </div>
                       ))}
                     </div>
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* 🌟 INTERFACES PREVIEW DATA HARIAN TERKINI */}
+            {tanggal && (
+              <div className="rounded-3xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+                <div className="bg-slate-800 text-white px-5 py-3.5 font-semibold text-sm flex justify-between items-center">
+                  <span>Daftar Hadir Terkini Hari Ini ({previewData.length} Siswa)</span>
+                  <button 
+                    onClick={() => muatPreviewHarian(tanggal)}
+                    className="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded-xl transition"
+                  >
+                    Refresh
+                  </button>
+                </div>
+                {loadingPreview ? (
+                  <div className="p-6 text-center text-xs text-slate-500">Memuat rekaman data dari database...</div>
+                ) : previewData.length > 0 ? (
+                  <div className="overflow-x-auto max-h-64">
+                    <table className="min-w-full divide-y divide-slate-100 text-left text-xs">
+                      <thead className="bg-slate-50 text-slate-700 uppercase font-semibold border-b border-slate-200">
+                        <tr>
+                          <th className="px-4 py-2 w-12 text-center">No</th>
+                          <th className="px-6 py-2">Nama Lengkap</th>
+                          <th className="px-4 py-2 text-center">Kelas</th>
+                          <th className="px-4 py-2 text-center">Jurusan</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white text-slate-600">
+                        {previewData.map((row) => (
+                          <tr key={row.no} className="hover:bg-slate-50 transition">
+                            <td className="px-4 py-2 text-center text-slate-400">{row.no}</td>
+                            <td className="px-6 py-2 font-semibold text-slate-800">{row.nama}</td>
+                            <td className="px-4 py-2 text-center">{row.kelas}</td>
+                            <td className="px-4 py-2 text-center">{row.jurusan || "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="p-6 text-center text-xs text-slate-400">Belum ada rekaman data absen disimpan untuk tanggal ini.</div>
                 )}
               </div>
             )}
@@ -390,7 +451,6 @@ export default function DashboardPage() {
                     Silakan pilih nama siswa yang paling sesuai:
                   </p>
 
-                  {/* Candidates List */}
                   <div className="mt-6 space-y-3">
                     {ambiguousModal.candidates.map((candidate) => (
                       <button
@@ -403,11 +463,9 @@ export default function DashboardPage() {
                       >
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="font-semibold text-slate-900">
-                              {candidate.nama_lengkap}
-                            </p>
+                            <p className="font-semibold text-slate-900">{candidate.nama_lengkap}</p>
                             <p className="mt-1 text-xs text-slate-600">
-                              {candidate.kelas} • {candidate.jurusan} • Kecocokan: {candidate.similarity}%
+                              {candidate.kelas} • {candidate.jurusan}
                             </p>
                           </div>
                           {resolvingAmbiguous ? (
@@ -420,7 +478,6 @@ export default function DashboardPage() {
                     ))}
                   </div>
 
-                  {/* Close Button */}
                   <button
                     onClick={() => setAmbiguousModal(null)}
                     disabled={resolvingAmbiguous}
